@@ -1,0 +1,20 @@
+{
+	"name": "world",
+	"description": "Living world: day/night cycle with 4-preset atmosphere lerp, clear/rain/snow weather machine, ambient audio zones",
+	"config": {
+		"cycle_minutes": 10,
+		"climate": "temperate",
+		"rain_sound": "",
+		"snow_sound": "",
+		"center": { "x": 0, "y": 0, "z": 0 },
+		"zones": [ { "pos": { "x": 0, "y": 4, "z": 0 }, "radius": 40, "sound_id": "", "volume": 0.5 } ]
+	},
+	"configKeys": {
+		"cycle_minutes": "minutes per full 24h cycle (default 10)",
+		"climate": "temperate (rain) | arctic (snow)",
+		"rain_sound": "optional sound asset id/url for rain ambience",
+		"snow_sound": "optional sound asset id/url for snow ambience",
+		"center": "{x,y,z} — weather emitters hover 90 studs above this",
+		"zones": "[{pos={x,y,z}, radius, sound_id, volume?}] — looped ambient audio emitters"
+	}
+}

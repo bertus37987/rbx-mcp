@@ -10,7 +10,8 @@ const COMMON = {
 };
 
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { join, dirname, basename } from "node:path";
+import { parseObjFile, chunkMesh } from "./mesh.mjs";
 
 function pluginTool(name, description, inputSchema, extraProps = {}) {
   return {
@@ -32,6 +33,30 @@ export function buildTools({ broker, router, local }) {
       return payload;
     },
   });
+
+  // Stream a parsed OBJ through the plugin's `editable_mesh` cmd: vert chunks
+  // (≤250) first, then face chunks (≤350) — faces keep GLOBAL 1-based indices,
+  // the plugin accumulates. done=true on the last call → plugin builds the
+  // MeshPart and returns {path,...}. Each call is its own lease, so a 100k-vert
+  // import never dies mid-command (rbx-mcp GOAL A).
+  async function streamEditableMesh(studioId, mesh, { name, parent_path = "Workspace", with_texture } = {}) {
+    const { vertChunks, faceChunks } = chunkMesh(mesh);
+    let batch = 0, res = null;
+    for (const c of vertChunks) {
+      res = await broker.enqueue(studioId, "editable_mesh", {
+        name, parent_path, verts: c.verts, uvs: c.uvs, vbase: c.base, batch: batch++, done: false,
+      }, 90000);
+    }
+    if (!faceChunks.length) faceChunks.push([]);
+    for (const f of faceChunks) {
+      const last = batch === vertChunks.length + faceChunks.length - 1;
+      res = await broker.enqueue(studioId, "editable_mesh", {
+        name, parent_path, faces: f, batch: batch++, done: last,
+        with_texture: last ? with_texture : undefined,
+      }, 90000);
+    }
+    return { ...(res && typeof res === "object" ? res : { result: res }), verts: mesh.verts.length, tris: mesh.faces.length, batches: batch };
+  }
 
   const tools = [
     // ---------------------------------------------------------------- core
@@ -188,10 +213,24 @@ export function buildTools({ broker, router, local }) {
       properties: { rig_path: { type: "string" }, items: { type: "array" } },
       required: ["rig_path", "items"], __timeoutMs: 120000,
     }, { destructiveHint: true })),
-    P(pluginTool("rbx_import_mesh", "Import a local FBX/GLB/OBJ as MeshPart via AssetService:CreateMeshPartAsync(Content.fromFile) — works for Blender exports. Then auto-runs rbx_validate_asset and reports stats. args: file (abs path), name, parent_path, with_texture (optional image file). For Blender→Roblox: export GLB 1BU=1stud, Y-up.", {
-      properties: { file: { type: "string" }, name: { type: "string" }, parent_path: { type: "string" }, with_texture: { type: "string" } },
-      required: ["file"], __timeoutMs: 120000,
-    }, { destructiveHint: true })),
+    {
+      ...pluginTool("rbx_import_mesh", "Import a local FBX/GLB/OBJ as MeshPart. FBX/GLB → AssetService:CreateMeshPartAsync(Content.fromFile) — works for Blender exports. .obj → server parses it, then streams vert/face chunks to the plugin's editable_mesh cmd (≤250 verts / ≤350 tris per call, separate leases — survives big imports). auto-runs rbx_validate_asset and reports stats. args: file (abs path), name, parent_path, with_texture (optional image file). For Blender→Roblox: export GLB 1BU=1stud, Y-up.", {
+        properties: { file: { type: "string" }, name: { type: "string" }, parent_path: { type: "string" }, with_texture: { type: "string" } },
+        required: ["file"], __timeoutMs: 120000,
+      }, { destructiveHint: true }),
+      handler: async (a) => {
+        const { studio_id, ...args } = a;
+        if (!/\.obj$/i.test(args.file || ""))
+          return broker.enqueue(studio_id, "import_mesh", args, 120000);
+        const mesh = parseObjFile(args.file);
+        if (!mesh.verts.length) throw new Error(`no vertices parsed from ${args.file}`);
+        return streamEditableMesh(studio_id, mesh, {
+          name: args.name || basename(args.file).replace(/\.obj$/i, ""),
+          parent_path: args.parent_path || "Workspace",
+          with_texture: args.with_texture,
+        });
+      },
+    },
 
     // ------------------------------------------------------- assets & kits
     P(pluginTool("rbx_insert_asset", "Insert a Creator-Store/Toolbox asset by assetId into Workspace (InsertService:LoadAsset). ALWAYS run rbx_security_scan afterwards — third-party models are the #1 backdoor vector.", {
@@ -326,6 +365,130 @@ export function buildTools({ broker, router, local }) {
     P(pluginTool("rbx_scenario", "Advanced game test: run a sequence of commands with expectations. steps=[{cmd,args,expect:[{field:'a.b',eq|contains:val|(exists if empty)}]}]. Each step executes a plugin command (create_instance, run_luau, build_gui, terrain_generate...), then checks results. stop_on_fail aborts. Returns {passed,failed,steps:[{i,cmd,ok,result|error|expect_failed}]} — THE game-build verification loop.", {
       properties: { steps: { type: "array" }, stop_on_fail: { type: "boolean" } }, required: ["steps"],
     }, { destructiveHint: true })),
+
+    // ------------------------------------------ v2: vfx, worlds, kits, gui
+    P(pluginTool("rbx_vfx", "Particle/VFX preset factory: fire.torch|brazier|campfire|chimney_smoke, weather.rain|snow|mist|embers|leaves, magic.portal|rune|heal, explosion.small|large, banner. path=existing part to attach to, or position=[x,y,z] to spawn an emitter anchor. props overrides emitter props {rate,size,lifetime,color...}. scale multiplies preset sizes/rates. Returns {paths}.", {
+      properties: {
+        preset: { type: "string" }, path: { type: "string" }, position: { type: "array" },
+        scale: { type: "number" }, props: { type: "object" },
+      },
+      required: ["preset"],
+    }, { destructiveHint: true })),
+    P(pluginTool("rbx_set_material", "Set Material (Enum name e.g. 'Slate','Cobblestone','CrackedLava') and/or MaterialVariant on a part tree. variant={name,base,brickColor} creates/reuses a MaterialVariant under MaterialService and assigns it — the custom-material look without texture files. terrain={region_center,region_size,material} paints voxels instead.", {
+      properties: {
+        path: { type: "string" }, material: { type: "string" },
+        variant: { type: "object", description: "{name, base, brickColor}" },
+        terrain: { type: "object", description: "{region_center, region_size, material}" },
+      },
+      required: ["path"], __cmd: "material",
+    }, { destructiveHint: true })),
+    P(pluginTool("rbx_populate", "Spawn an NPC crowd: count rigs (rig_type 'R15'|'R6') scattered inside area {center=[x,y,z], radius} — each gets a job behavior from jobs [{type:'idle'|'patrol'|'chase'|...}] and optional display names[]. Returns {created, rigs:[paths]}. The 'living world' primitive — pair with rbx_npc_behavior for custom logic.", {
+      properties: {
+        rig_type: { type: "string" }, count: { type: "number" },
+        area: { type: "object", description: "{center=[x,y,z], radius}" },
+        jobs: { type: "array" }, names: { type: "array" },
+      },
+      required: ["count", "area"], __timeoutMs: 120000,
+    }, { destructiveHint: true })),
+    P(pluginTool("rbx_optimize", "Performance audit of a subtree (or whole Workspace when path omitted): cosmetic parts with CanCollide/CanTouch/CanQuery on (physics/query waste), CastShadow on far/small props, unanchored statics, overdraw risks, StreamingEnabled hints. apply=true also fixes the safe set (waypoint). Returns {issues:[{path,issue,fix}], stats, applied?}.", {
+      properties: { path: { type: "string" }, apply: { type: "boolean" } },
+      __timeoutMs: 120000,
+    })),
+    P(pluginTool("rbx_audio", "Audio preset factory: ambience.forest|dungeon|rain|cave|city|night, music.combat|explore|menu|boss, ui.hover|click, positional loops via position=[x,y,z] or path=part emitter. volume (0-1), sound_id overrides the preset's curated rbxassetid. Returns {paths}.", {
+      properties: {
+        preset: { type: "string" }, path: { type: "string" }, position: { type: "array" },
+        volume: { type: "number" }, sound_id: { type: "string" },
+      },
+      required: ["preset"],
+    }, { destructiveHint: true })),
+    P(pluginTool("rbx_cutscene", "Author a camera-spline cutscene: waypoints=[{pos=[x,y,z], look=[x,y,z], dur=seconds, fov?}] eased into a LocalScript under StarterPlayerScripts.RbxCutscene.<name> (trigger it in playtest). letterbox=true adds cinematic bars, shake={amp,freq} handheld motion. Returns {path, steps}.", {
+      properties: {
+        name: { type: "string" }, waypoints: { type: "array" },
+        letterbox: { type: "boolean" }, shake: { type: "object", description: "{amp, freq}" },
+      },
+      required: ["waypoints"],
+    }, { destructiveHint: true })),
+    P(pluginTool("rbx_kit_place", "Instance a built kit piece: clones the master at ServerStorage.RbxKit.<kit>.<piece> once per transforms entry [{pos=[x,y,z], rot=[x,y,z]deg, scale?}] under parent_path — clones share MeshIds so mass placement is cheap (the modular-kit payoff). Returns {placed, paths}.", {
+      properties: {
+        kit: { type: "string" }, piece: { type: "string" },
+        transforms: { type: "array", description: "[{pos=[x,y,z], rot=[deg], scale?}]" },
+        parent_path: { type: "string" },
+      },
+      required: ["kit", "piece", "transforms"], __timeoutMs: 120000,
+    }, { destructiveHint: true })),
+    P(pluginTool("rbx_kit_pieces", "List pieces registered in a kit (masters under ServerStorage.RbxKit.<kit>). Returns [{name, path, tris?}] — check before rbx_kit_place.", {
+      properties: { kit: { type: "string" } },
+      required: ["kit"],
+    }, { readOnlyHint: true })),
+    P(pluginTool("rbx_gui_animate", "Attach a tween preset driver to a GuiObject: slide_in|fade|bounce|pulse — a LocalScript inside the element plays it on show (props: {dur, easing, delay, from, to}). Stacks with rbx_gui_component.", {
+      properties: {
+        path: { type: "string" },
+        preset: { type: "string", description: "slide_in|fade|bounce|pulse" },
+        props: { type: "object" },
+      },
+      required: ["path", "preset"],
+    }, { destructiveHint: true })),
+    P(pluginTool("rbx_gui_component", "Attach an interactive behavior to a GuiObject: draggable (mouse-drag), hover_fx (tint/grow on MouseEnter), click_scale (press shrink+release pop). props tunes behavior params. Creates a LocalScript inside the element.", {
+      properties: {
+        path: { type: "string" },
+        behavior: { type: "string", description: "draggable|hover_fx|click_scale" },
+        props: { type: "object" },
+      },
+      required: ["path", "behavior"],
+    }, { destructiveHint: true })),
+
+    // ------------------------------------------------ server-side builders
+    {
+      name: "rbx_build",
+      description: "Run a parametric builder recipe (builders/<recipe>.lua on this server) inside Studio — gothic_wall, gothic_arch, buttress, crenellated_wall, spire, stair_flight, curtain_wall, tower_stack, interior_shell, courtyard, colonnade, keep... config is recipe-specific JSON ({origin, size, floors...}); config.parent_path chooses the parent (default Workspace). Returns the recipe's luau result.",
+      inputSchema: { type: "object", properties: { ...COMMON, recipe: { type: "string" }, config: { type: "object" } }, required: ["studio_id", "recipe"] },
+      annotations: { title: "build", destructiveHint: true },
+      handler: async (a) => {
+        let src;
+        try { src = local.builderSource(a.recipe); }
+        catch (e) { return { ok: false, error: e.message, recipes: local.listBuilders() }; }
+        const cfg = a.config || {};
+        const code = `local BUILD_CONFIG = ${JSON.stringify(cfg)}\nlocal PARENT_PATH = ${JSON.stringify(cfg.parent_path || "Workspace")}\n` + src;
+        return broker.enqueue(a.studio_id, "run_luau", { code }, 120000);
+      },
+    },
+    {
+      name: "rbx_kit_build",
+      description: "Build a modular mesh kit into ServerStorage.RbxKit.<kit> as MeshPart masters. Reads kits/mesh/<kit>/spec.json {pieces:[{name,file}], gen?}; source='files' parses each OBJ (kits/mesh/<kit>/ or vendor/cache/kit_<kit>/) and streams it through editable_mesh; source='generator' returns Blender-gen instructions instead (run spec.gen via upstream rbx3d.run_bpy, export OBJs, then re-call with source=files). Instance pieces with rbx_kit_place. Returns {pieces:[{name,tris,path}]}.",
+      inputSchema: { type: "object", properties: { ...COMMON, kit: { type: "string" }, source: { type: "string", description: "files|generator (default files)" } }, required: ["studio_id", "kit"] },
+      annotations: { title: "kit build", destructiveHint: true },
+      handler: async (a) => {
+        const spec = local.kitSpec(a.kit);
+        if (!spec) return { ok: false, error: `no spec.json under kits/mesh/${a.kit}/ — create pieces[] {name,file} (+ optional gen)`, hint: "piece OBJs resolve under kits/mesh/<kit>/ then vendor/cache/kit_<kit>/" };
+        if ((a.source || "files") === "generator") {
+          if (!spec.gen) return { ok: false, error: `kit '${a.kit}' spec has no gen — nothing to generate`, spec };
+          return { note: "run gen via upstream rbx3d.run_bpy, then re-call with source=files", spec };
+        }
+        const pieces = [];
+        for (const p of spec.pieces || []) {
+          const file = local.kitPiecePath(a.kit, p.file);
+          const pname = p.name || (p.file || "").replace(/\.obj$/i, "") || "piece";
+          if (!file) { pieces.push({ name: pname, error: `file '${p.file}' not found under kits/mesh/${a.kit}/ or vendor/cache/kit_${a.kit}/` }); continue; }
+          const mesh = parseObjFile(file);
+          if (!mesh.verts.length) { pieces.push({ name: pname, error: `no vertices in ${file}` }); continue; }
+          const res = await streamEditableMesh(a.studio_id, mesh, { name: pname, parent_path: "ServerStorage" });
+          const src = res?.path;
+          if (!src) { pieces.push({ name: pname, tris: mesh.faces.length, error: "editable_mesh returned no path" }); continue; }
+          // move + rename the built part under ServerStorage.RbxKit.<kit>.<piece>
+          const mv = await broker.enqueue(a.studio_id, "run_luau", { code:
+            `local ss = game:GetService("ServerStorage")\n` +
+            `local rk = ss:FindFirstChild("RbxKit") or Instance.new("Folder")\nrk.Name = "RbxKit"\nrk.Parent = ss\n` +
+            `local kd = rk:FindFirstChild(${JSON.stringify(a.kit)}) or Instance.new("Folder")\nkd.Name = ${JSON.stringify(a.kit)}\nkd.Parent = rk\n` +
+            `local cur = game\nfor seg in tostring(${JSON.stringify(src)}):gmatch("[^%.]+") do\n\tcur = cur and cur:FindFirstChild(seg)\nend\n` +
+            `if not cur then error("built piece not found: ${JSON.stringify(src)}") end\n` +
+            `cur.Name = ${JSON.stringify(pname)}\ncur.Parent = kd\n` +
+            `return { path = kd:GetFullName() .. "." .. cur.Name }` }, 120000);
+          const path = mv?.result?.path || `ServerStorage.RbxKit.${a.kit}.${pname}`;
+          pieces.push({ name: pname, tris: mesh.faces.length, verts: mesh.verts.length, path, ...(mv?.ok === false ? { warning: mv.error || "move-to-RbxKit failed" } : {}) });
+        }
+        return { ok: true, kit: a.kit, pieces };
+      },
+    },
 
     // ------------------------------------------------------- server-local
     {

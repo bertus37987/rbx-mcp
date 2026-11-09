@@ -11,6 +11,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const PKG_ROOT = join(__dirname, "..");
 const SNAP_DIR = join(PKG_ROOT, ".snapshots");
 const KITS_DIR = join(PKG_ROOT, "kits");
+const KITS_MESH_DIR = join(KITS_DIR, "mesh");
+const BUILDERS_DIR = join(PKG_ROOT, "builders");
 const SKILLS_DIR = join(PKG_ROOT, "skills");
 const VENDOR_MANIFEST = join(PKG_ROOT, "vendor", "manifest.json");
 const CACHE = join(PKG_ROOT, "vendor", "cache");
@@ -127,6 +129,29 @@ export function createLocalTools() {
     if (!mod) throw new Error(`unknown module '${name}'. Available: ${Object.keys(mf.modules || {}).join(", ")}`);
     const cached = join(CACHE, `${name}.lua`);
     return { mod, cached, exists: existsSync(cached) };
+  }
+
+  // ------------------------------------------- builders + mesh kits
+  // builders/<recipe>.lua = parametric world builders run via run_luau with
+  // BUILD_CONFIG + PARENT_PATH prepended (rbx_build).
+  function listBuilders() {
+    return existsSync(BUILDERS_DIR) ? readdirSync(BUILDERS_DIR).filter(f => f.endsWith(".lua")).map(f => f.replace(/\.lua$/, "")) : [];
+  }
+  function builderSource(name) {
+    const lua = join(BUILDERS_DIR, `${name}.lua`);
+    if (!existsSync(lua)) throw new Error(`unknown recipe '${name}'. Available: ${listBuilders().join(", ") || "(none — builders/ missing or empty)"}`);
+    return readFileSync(lua, "utf8");
+  }
+  // kits/mesh/<kit>/spec.json = {pieces:[{name,file}], gen?} — OBJ pieces for
+  // rbx_kit_build; files may also live in vendor/cache/kit_<kit>/ (generated).
+  function kitSpec(kit) {
+    const file = join(KITS_MESH_DIR, kit, "spec.json");
+    return existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : null;
+  }
+  function kitPiecePath(kit, file) {
+    for (const p of [join(KITS_MESH_DIR, kit, file), join(KITS_MESH_DIR, kit, "out", file), join(CACHE, `kit_${kit}`, file)])
+      if (existsSync(p)) return p;
+    return null;
   }
 
   // Fetch a whole module directory from a GitHub repo tarball (codeload) —
@@ -248,8 +273,9 @@ export function createLocalTools() {
     saveSnapshot, loadSnapshot, diffSnapshots,
     runLinter, runFormatter, runTypecheck,
     listKits, readSkill, kitSource, moduleSource,
+    listBuilders, builderSource, kitSpec, kitPiecePath,
     docsGet, apiClass, apiEnum, meshWatchStart, meshWatchStop, fetchRepoDir,
-    dirs: { snapshots: SNAP_DIR, kits: KITS_DIR, skills: SKILLS_DIR },
+    dirs: { snapshots: SNAP_DIR, kits: KITS_DIR, kitsMesh: KITS_MESH_DIR, builders: BUILDERS_DIR, skills: SKILLS_DIR },
     run,
   };
 }

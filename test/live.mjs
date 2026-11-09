@@ -292,6 +292,59 @@ try {
   const watchStop = await call("rbx_mesh_watch", s({ dir: join(__dirname, "..", "vendor", "cache"), stop: true }));
   check("rbx_mesh_watch stop", watchStop.parsed?.stopped !== undefined);
 
+  // ---- v2: mesh import (EditableMesh chunked) -------------------------------------
+  const objFix = join(__dirname, "fixtures", "pyramid.obj");
+  const imesh = await call("rbx_import_mesh", s({ file: objFix, name: "__RbxTestPyr", parent_path: TEST_ROOT }));
+  check("rbx_import_mesh obj→editable_mesh", (imesh.parsed?.path || "").includes("Pyr") || (imesh.parsed?.verts|0) > 0 || !!imesh.parsed?.tris, (JSON.stringify(imesh.parsed)||"?").slice(0, 160));
+
+  // ---- v2: vfx + material --------------------------------------------------------
+  await call("rbx_create_instance", s({ className: "Part", name: "TorchPost", parent_path: TEST_ROOT, props: { Size: [1, 6, 1], Position: [0, 4, 0], Anchored: true } }));
+  const vfx = await call("rbx_vfx", s({ preset: "fire.torch", path: `${TEST_ROOT}.TorchPost` }));
+  check("rbx_vfx fire.torch", (vfx.parsed?.paths || []).length >= 1, (JSON.stringify(vfx.parsed)||"?").slice(0, 120));
+  const vfx2 = await call("rbx_vfx", s({ preset: "weather.rain", position: [0, 30, 0] }));
+  check("rbx_vfx weather.rain", vfx2.parsed !== undefined, (JSON.stringify(vfx2.parsed)||"?").slice(0, 120));
+  const mat = await call("rbx_set_material", s({ path: `${TEST_ROOT}.TorchPost`, material: "Slate" }));
+  check("rbx_set_material", mat.parsed !== undefined, (JSON.stringify(mat.parsed)||"?").slice(0, 120));
+
+  // ---- v2: kit place (stub master via run_luau) -----------------------------------
+  await call("rbx_run_luau", s({ code: `local ss=game:GetService("ServerStorage") local k=ss:FindFirstChild("RbxKit") or Instance.new("Folder") k.Name="RbxKit" k.Parent=ss local g=k:FindFirstChild("test") or Instance.new("Folder") g.Name="test" g.Parent=k local p=Instance.new("Part") p.Name="wall" p.Size=Vector3.new(8,16,4) p.Parent=g return "master ok"` }));
+  const kp = await call("rbx_kit_place", s({ kit: "test", piece: "wall", transforms: [{ pos: [0, 8, 50], rot: [0, 0, 0] }, { pos: [8, 8, 50], rot: [0, 45, 0] }], parent_path: TEST_ROOT }));
+  check("rbx_kit_place", (kp.parsed?.placed|0) === 2, (JSON.stringify(kp.parsed)||"?").slice(0, 120));
+  const kps = await call("rbx_kit_pieces", s({ kit: "test" }));
+  check("rbx_kit_pieces", Array.isArray(kps.parsed) || Array.isArray(kps.parsed?.pieces), (JSON.stringify(kps.parsed)||"?").slice(0, 120));
+
+  // ---- v2: populate / optimize / audio / cutscene ----------------------------------
+  const pop = await call("rbx_populate", s({ rig_type: "R15", count: 2, area: { center: [0, 5, 60], radius: 10 }, jobs: [{ type: "idle" }], names: ["Guard"] }));
+  check("rbx_populate", (pop.parsed?.created|0) === 2, (JSON.stringify(pop.parsed)||"?").slice(0, 140));
+  const opt = await call("rbx_optimize", s({ path: TEST_ROOT, apply: false }));
+  check("rbx_optimize audit", opt.parsed !== undefined, (JSON.stringify(opt.parsed)||"?").slice(0, 140));
+  const aud = await call("rbx_audio", s({ preset: "ambience.forest", position: [0, 5, 70] }));
+  check("rbx_audio", aud.parsed !== undefined, (JSON.stringify(aud.parsed)||"?").slice(0, 120));
+  const cut = await call("rbx_cutscene", s({ name: "__RbxTestCut", waypoints: [{ pos: [0, 10, 0], look: [0, 5, 0], dur: 2 }, { pos: [20, 10, 20], look: [0, 5, 0], dur: 2 }] }));
+  check("rbx_cutscene", !!cut.parsed?.path || (cut.parsed?.steps|0) === 2, (JSON.stringify(cut.parsed)||"?").slice(0, 120));
+
+  // ---- v2: GUI v2 patterns + animate + component ------------------------------------
+  const gui3 = await call("rbx_build_gui", s({ pattern: "slider", name: "__RbxTestSlider", parent_path: "StarterGui" }));
+  check("gui slider", !!gui3.parsed?.root_path, (JSON.stringify(gui3.parsed)||"?").slice(0, 120));
+  const gui4 = await call("rbx_build_gui", s({ pattern: "game_hud", name: "__RbxTestHUD", parent_path: "StarterGui" }));
+  check("gui game_hud", !!gui4.parsed?.root_path, (JSON.stringify(gui4.parsed)||"?").slice(0, 120));
+  const gan = await call("rbx_gui_animate", s({ path: gui3.parsed?.root_path || "StarterGui.__RbxTestSlider", preset: "slide_in" }));
+  check("rbx_gui_animate", gan.parsed !== undefined, (JSON.stringify(gan.parsed)||"?").slice(0, 120));
+  const gco = await call("rbx_gui_component", s({ path: gui3.parsed?.root_path || "StarterGui.__RbxTestSlider", behavior: "draggable" }));
+  check("rbx_gui_component", gco.parsed !== undefined, (JSON.stringify(gco.parsed)||"?").slice(0, 120));
+
+  // ---- v2: lighting v2 + scenario v2 + build + kit_build ------------------------------
+  const light3 = await call("rbx_lighting", s({ fog: { start: 100, end: 900, color: "#8899aa" } }));
+  check("rbx_lighting v2 fog", light3.parsed !== undefined, (JSON.stringify(light3.parsed)||"?").slice(0, 120));
+  const scen2 = await call("rbx_scenario", s({ stop_on_fail: true, steps: [
+    { cmd: "create_instance", args: { className: "Part", name: "ScenPart", parent_path: TEST_ROOT }, expect: [{ field: "count_under", path: TEST_ROOT, min: 1 }] },
+  ] }));
+  check("rbx_scenario v2 count_under", scen2.parsed?.passed === 1, (JSON.stringify(scen2.parsed)||"?").slice(0, 160));
+  const bld = await call("rbx_build", s({ recipe: "stair_flight", config: { parent_path: TEST_ROOT, steps: 3 } }));
+  check("rbx_build (graceful)", bld.parsed !== undefined, (JSON.stringify(bld.parsed)||"?").slice(0, 140));
+  const kb = await call("rbx_kit_build", s({ kit: "gothic", source: "files" }));
+  check("rbx_kit_build (graceful)", kb.parsed !== undefined, (JSON.stringify(kb.parsed)||"?").slice(0, 140));
+
   // ---- cleanup ------------------------------------------------------------------
   console.log("--- cleanup ---");
   const del = await call("rbx_delete", s({ path: TEST_ROOT }));
@@ -300,6 +353,14 @@ try {
   check("cleanup workspace", del.parsed?.removed !== undefined || del.parsed?.path !== undefined, (JSON.stringify(del.parsed)||"?").slice(0, 100));
   await call("rbx_delete", s({ path: "ServerScriptService.__RbxTest" }));
   await call("rbx_delete", s({ path: "StarterGui.__RbxTestUI" })).catch(()=>{});
+  await call("rbx_run_luau", s({ code: `local n=0
+local function sweep(root, pred) for _,c in ipairs(root:GetChildren()) do if pred(c) then c:Destroy(); n+=1 end end end
+sweep(workspace, function(c) return c.Name:find("__RbxTest") or c.Name:find("VfxEmitter") or c.Name:find("Emitter") and c:IsA("BasePart") and not c.CanCollide or c.Name=="TorchPost" end)
+sweep(workspace, function(c) return c:IsA("Model") and c:FindFirstChildOfClass("Humanoid") and c.Name~="TestKnight" and #c.Name<40 and c.Name:find("Citizen|Guard|NPC") end)
+local ss=game:GetService("ServerStorage") local k=ss:FindFirstChild("RbxKit") if k and k:FindFirstChild("test") then k.test:Destroy(); n+=1 end
+local sp=game.StarterPlayer.StarterPlayerScripts local cs=sp:FindFirstChild("RbxCutscene") if cs then cs:Destroy(); n+=1 end
+local sg=game.StarterGui for _,c in ipairs(sg:GetChildren()) do if c.Name:find("__RbxTest") then c:Destroy(); n+=1 end end
+return {swept=n}` }));
   await call("rbx_find_replace", s({})).catch(()=>{});
 } catch (e) {
   fail++; console.log("FAIL exception — " + e.message);

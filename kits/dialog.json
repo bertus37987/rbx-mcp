@@ -1,0 +1,14 @@
+{
+	"name": "dialog",
+	"description": "Branching NPC dialogue: engine module + prompt wiring + typewriter UI",
+	"config": {
+		"npc_path": "Workspace.NPC",
+		"prompt_text": "Talk",
+		"tree": "(default demo: guard greets, 2 branching options, farewell)"
+	},
+	"configKeys": {
+		"npc_path": "Workspace.NPC — dotted path to the NPC model/part (fallback: first model with 'npc' in name)",
+		"prompt_text": "Talk — ProximityPrompt action text",
+		"tree": "(optional) array of nodes {type='line'|'choice'|'action'|'end', id?, speaker?, text?, next?, options=[{text,if?,goto}]}"
+	}
+}

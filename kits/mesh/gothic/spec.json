@@ -1,0 +1,21 @@
+{
+  "name": "gothic",
+  "grid": 8,
+  "pivot": "lower-left-front corner at origin",
+  "generator": "gen_gothic.py",
+  "units": "1 unit = 1 stud (OBJ exported Y-up, -Z forward via Blender's OBJ exporter)",
+  "pieces": [
+    {"name": "wall_plain",    "file": "wall_plain.obj",    "size": [8, 16, 4.7]},
+    {"name": "wall_window",   "file": "wall_window.obj",   "size": [8, 16, 4]},
+    {"name": "wall_doorway",  "file": "wall_doorway.obj",  "size": [8, 16, 4]},
+    {"name": "merlon_run",    "file": "merlon_run.obj",    "size": [24, 4, 3]},
+    {"name": "buttress",      "file": "buttress.obj",      "size": [6, 24, 8]},
+    {"name": "corner_tower",  "file": "corner_tower.obj",  "size": [18, 34, 18]},
+    {"name": "stair_run",     "file": "stair_run.obj",     "size": [8, 16, 24]},
+    {"name": "arch_large",    "file": "arch_large.obj",    "size": [24, 29.5, 4]},
+    {"name": "gate_frame",    "file": "gate_frame.obj",    "size": [24, 30, 7]},
+    {"name": "spire_cap",     "file": "spire_cap.obj",     "size": [12, 36, 12]},
+    {"name": "pillar",        "file": "pillar.obj",        "size": [5, 20, 5]},
+    {"name": "roof_hip",      "file": "roof_hip.obj",      "size": [16, 8, 12]}
+  ]
+}

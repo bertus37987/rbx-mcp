@@ -75,6 +75,26 @@
       "note": "Service/controller framework scaffold (server half; pair KnitClient). [multi-file: full tree installed]",
       "ref": "main",
       "dir": "src"
+    },
+    "simplepath": {
+      "url": "https://raw.githubusercontent.com/ahmicy/simplepath/main/src/SimplePath.lua",
+      "repo": "ahmicy/simplepath",
+      "license": "MIT",
+      "note": "Pathfinding wrapper (Path:Run + waypoints/events) — NPC crowds, pets, patrols. Single-file module."
+    },
+    "raycasthitbox": {
+      "repo": "Swordphin/raycastHitboxRbxl",
+      "license": "MIT",
+      "note": "Raycast melee hitboxes (Hitbox:HitStart/HitStop, OnHit events) — swords, claws, projectiles-lite. init.lua→root module, Solvers/ + deps as children. [multi-file: full tree installed]",
+      "ref": "master",
+      "dir": "lib"
+    },
+    "fastcast": {
+      "repo": "010DevX101/FastCastRedux",
+      "license": "MIT-0",
+      "note": "FastCastRedux (Xan_TheDragon's FastCast successor — original repo gone): high-fps projectile physics w/ length-capping, pierce, per-part hit signals. init.luau→root module. [multi-file: full tree installed]",
+      "ref": "main",
+      "dir": "src/FastCastRedux"
     }
   }
 }

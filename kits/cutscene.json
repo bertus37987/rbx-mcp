@@ -1,0 +1,14 @@
+{
+	"name": "cutscene",
+	"description": "Cinematic cutscene: camera-spline flythrough with cosine easing, letterbox bars, DepthOfField focus, Space to skip",
+	"config": {
+		"waypoints": [ { "pos": { "x": 24, "y": 14, "z": 24 }, "look": { "x": 0, "y": 10, "z": 0 }, "dur": 4, "fov": 70 } ],
+		"letterbox": true,
+		"trigger_bindable": ""
+	},
+	"configKeys": {
+		"waypoints": "[{pos={x,y,z}, look={x,y,z}, dur, fov?}] — dur = seconds of travel into the point (default: 3-point orbit around 0,10,0)",
+		"letterbox": "true|false (default true) — black bars tween in/out",
+		"trigger_bindable": "optional ReplicatedStorage child name (BindableEvent or RemoteEvent); unset = auto-play 2s after join. ReplicatedStorage.RbxCutscenePlay always replays"
+	}
+}
