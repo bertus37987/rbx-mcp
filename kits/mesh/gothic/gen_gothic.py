@@ -16,14 +16,18 @@
 #   y=0 plane facing +Y, depth extending -Y.  finalize() snaps the bbox corner
 #   (x_min, y_max, z_min) to the origin anyway, so trim may protrude +Y freely.
 #
-# Each piece: build parts -> EXACT booleans -> bevel -> join into ONE mesh ->
-# triangulate -> outward flat normals -> pivot snap -> export to
-# <script_dir>/out/<piece>.obj -> delete.  <= ~800 tris, < 3000 verts (asserted).
+# Each piece: build parts -> bevel -> join into ONE mesh -> triangulate ->
+# outward flat normals -> pivot snap -> export to <script_dir>/out/<piece>.obj
+# -> delete.  <= ~800 tris, < 3000 verts (asserted).
 #
-# NOTE on modifiers: bpy.ops.object.modifier_apply proved unreliable in this
-# headless build (produced swapped operand results for booleans), so modifiers
-# are baked by evaluating the depsgraph (new_from_object) — context-free and
-# deterministic.  bpy.ops.object.join and transform_apply do work headless.
+# NO BOOLEAN MODIFIERS ARE USED: on Blender 5.2.1 headless the EXACT solver
+# returned inverted (cutter-minus-target) results for n-gon-faced operands and
+# intermittently crashed on rounded-arch cutters.  Openings are instead built
+# by decomposition: wall_with_opening() assembles strips + a concave
+# "tympanum" prism (rect-minus-arch ngon), and frame rings are annular tubes
+# (arch_band) between two matching outlines.  Deterministic, crash-free, and
+# fewer tris than solver output.  bevel still bakes through the depsgraph
+# (bpy.ops.object.modifier_apply also proved unreliable here).
 
 import bpy
 import bmesh
@@ -107,7 +111,8 @@ def mesh_obj(name, verts, faces):
 
 
 def prism_y(name, outline_xz, y0, y1):
-    """Extrude a closed XZ outline (list of (x,z)) along Y from y0 to y1."""
+    """Extrude a closed XZ outline (list of (x,z)) along Y from y0 to y1.
+    The outline may be concave (e.g. a rect minus an arch cap)."""
     n = len(outline_xz)
     verts = [(x, y0, z) for x, z in outline_xz] + [(x, y1, z) for x, z in outline_xz]
     faces = [tuple(range(n)), tuple(range(2 * n - 1, n - 1, -1))]
@@ -117,22 +122,80 @@ def prism_y(name, outline_xz, y0, y1):
     return mesh_obj(name, verts, faces)
 
 
-def pointed_arch(cx, y0, y1, hw, z_bot, z_spring, z_apex):
-    """Pointed (gothic) arch prism: rect to springline + triangular peak."""
-    outline = [
-        (cx - hw, z_bot), (cx + hw, z_bot), (cx + hw, z_spring),
-        (cx, z_apex), (cx - hw, z_spring),
-    ]
-    return prism_y("arch", outline, y0, y1)
+def pointed_outline(cx, hw, zb, zs, za):
+    """XZ outline of a pointed arch: rect to springline + triangular peak."""
+    return [(cx - hw, zb), (cx + hw, zb), (cx + hw, zs),
+            (cx, za), (cx - hw, zs)]
 
 
-def round_arch(cx, y0, y1, hw, z_bot, z_spring, segs=8):
-    """Round-topped arch prism: rect to springline + semicircular cap (r = hw)."""
-    outline = [(cx - hw, z_bot), (cx + hw, z_bot)]
+def round_outline(cx, hw, zb, zs, segs=8):
+    """XZ outline of a round arch: rect to springline + semicircular cap."""
+    pts = [(cx - hw, zb), (cx + hw, zb)]
     for i in range(segs + 1):
-        a = math.pi * (i / segs)  # right spring corner -> apex -> left corner
-        outline.append((cx + hw * math.cos(a), z_spring + hw * math.sin(a)))
-    return prism_y("rarch", outline, y0, y1)
+        a = math.pi * i / segs  # right spring corner -> apex -> left corner
+        pts.append((cx + hw * math.cos(a), zs + hw * math.sin(a)))
+    return pts
+
+
+def pointed_tympanum(cx, hw, zs, za, ztop):
+    """Concave XZ outline: the rect over an opening (zs..ztop) minus the
+    triangular peak — i.e. wall material left after the arch bite."""
+    return [(cx - hw, zs), (cx - hw, ztop), (cx + hw, ztop),
+            (cx + hw, zs), (cx, za)]
+
+
+def round_tympanum(cx, hw, zs, za, ztop, segs=6):
+    """Concave XZ outline: rect (zs..ztop) minus a semicircular cap."""
+    pts = [(cx - hw, zs), (cx - hw, ztop), (cx + hw, ztop), (cx + hw, zs)]
+    for i in range(1, segs):
+        a = math.pi * i / segs  # spring-right -> apex -> spring-left
+        pts.append((cx + hw * math.cos(a), zs + hw * math.sin(a)))
+    return pts
+
+
+def arch_band(name, y0, y1, o_pts, i_pts):
+    """Annular band (frame ring) between two equal-length XZ outlines,
+    extruded y0 -> y1.  No boolean needed."""
+    n = len(o_pts)
+    assert n == len(i_pts), "band outlines must have equal vertex counts"
+    verts = ([(x, y0, z) for x, z in o_pts]
+             + [(x, y1, z) for x, z in o_pts]
+             + [(x, y0, z) for x, z in i_pts]
+             + [(x, y1, z) for x, z in i_pts])
+    OF, OB, IF, IB = 0, n, 2 * n, 3 * n
+    faces = []
+    for i in range(n):
+        j = (i + 1) % n
+        faces.append((OF + i, IF + i, IF + j, OF + j))   # front annulus (y0)
+        faces.append((OB + i, IB + i, IB + j, OB + j))   # back annulus (y1)
+        faces.append((OF + i, OB + i, OB + j, OF + j))   # outer jamb
+        faces.append((IF + i, IB + i, IB + j, IF + j))   # inner jamb
+    return mesh_obj(name, verts, faces)
+
+
+def wall_with_opening(prefix, w, d, h, yf, cx, hw, zb, zs, za, kind, segs=6):
+    """Wall (w x d x h, front face at y=yf, body to y=yf-d) with an arch
+    opening `hw` wide at cx, void from z=zb to springline z=zs, arch cap to
+    apex z=za.  Built by decomposition (strips + concave tympanum) so no
+    boolean solver is required.  Returns a list of parts."""
+    y0, y1 = yf - d, yf
+    parts = []
+    xl, xr = cx - hw, cx + hw
+    if xl > 0.01:
+        parts.append(box(f"{prefix}_L", xl / 2.0, yf - d / 2.0, h / 2.0,
+                         xl, d, h))
+    if w - xr > 0.01:
+        parts.append(box(f"{prefix}_R", (xr + w) / 2.0, yf - d / 2.0, h / 2.0,
+                         w - xr, d, h))
+    if zb > 0.05:  # sill strip under the opening
+        parts.append(box(f"{prefix}_sill", cx, yf - d / 2.0, zb / 2.0,
+                         2 * hw, d, zb))
+    if kind == 'point':
+        o = pointed_tympanum(cx, hw, zs, za, h)
+    else:
+        o = round_tympanum(cx, hw, zs, za, h, segs)
+    parts.append(prism_y(f"{prefix}_tymp", o, y0, y1))
+    return parts
 
 
 def bake_modifiers(obj):
@@ -160,21 +223,6 @@ def join(name, objs):
     o.name = name
     _apply_xform(o)
     return o
-
-
-def bool_diff(target, cutter):
-    """EXACT boolean difference; cutter object is consumed (deleted)."""
-    m = target.modifiers.new('cut', 'BOOLEAN')
-    m.operation = 'DIFFERENCE'
-    try:
-        m.solver = 'EXACT'
-    except Exception:
-        pass
-    m.object = cutter
-    bake_modifiers(target)
-    bpy.data.objects.remove(cutter, do_unlink=True)
-    target.data.validate(verbose=False)
-    target.data.update()
 
 
 def bevel(obj, w=0.15, seg=2):
@@ -272,25 +320,25 @@ def p_wall_plain():
 
 
 def p_wall_window():
-    wall = box("ww_body", 4, -2, 8, 8, 4, 16)
-    hole = pointed_arch(4, -5.0, 1.0, 1.2, 5.0, 10.5, 13.2)
-    bool_diff(wall, hole)
-    # inset frame ring: proud 0.2 of the front face (+Y), jamb 0.9 into the wall
-    outer = pointed_arch(4, -0.7, 0.2, 1.5, 4.8, 10.7, 13.5)
-    inner = pointed_arch(4, -1.0, 0.6, 1.0, 5.2, 10.3, 12.6)
-    bool_diff(outer, inner)
-    return join("wall_window", [wall, outer])
+    # wall with pointed-arch window hole (sill z5, spring z10.5, apex z13.2)
+    parts = wall_with_opening("ww", 8, 4, 16, 0.0, 4, 1.2, 5.0, 10.5, 13.2,
+                            'point')
+    # inset frame ring proud 0.2 of the face: outer > hole, inner < hole (lip)
+    parts.append(arch_band("ww_ring", -0.7, 0.2,
+                           pointed_outline(4, 1.5, 4.8, 10.7, 13.5),
+                           pointed_outline(4, 1.0, 5.2, 10.3, 12.6)))
+    return join("wall_window", parts)
 
 
 def p_wall_doorway():
-    wall = box("wd_body", 4, -2, 8, 8, 4, 16)
-    hole = round_arch(4, -5.0, 1.0, 1.6, -0.1, 7.0, segs=10)  # apex 8.6
-    bool_diff(wall, hole)
-    # U-shaped door frame (no bottom bar: inner cutter runs below the floor)
-    outer = round_arch(4, -0.8, 0.2, 1.8, -0.2, 7.2, segs=10)
-    inner = round_arch(4, -1.1, 0.6, 1.4, -0.7, 6.9, segs=10)
-    bool_diff(outer, inner)
-    return join("wall_doorway", [wall, outer])
+    # wall with round-top doorway (floor level, spring z7, apex z8.6)
+    parts = wall_with_opening("wd", 8, 4, 16, 0.0, 4, 1.6, -0.1, 7.0, 8.6,
+                            'round', segs=8)
+    # U-shaped door frame, proud 0.2 (both outlines z_bot=0 -> legs to floor)
+    parts.append(arch_band("wd_ring", -0.8, 0.2,
+                           round_outline(4, 1.8, 0.0, 7.2, 8),
+                           round_outline(4, 1.4, 0.0, 6.9, 8)))
+    return join("wall_doorway", parts)
 
 
 def p_merlon_run():
@@ -345,19 +393,20 @@ def p_arch_large():
 
 
 def p_gate_frame():
-    # gatehouse face 24w x 28h x 6d recessed 1 behind flanking 6x24x6 towers
-    slab = box("gf_slab", 12, -4, 14, 24, 6, 28)             # y [-7,-1]
-    hole = round_arch(12, -8, 2, 5.0, -0.1, 9.0, segs=8)    # 10w x 14h apex
-    bool_diff(slab, hole)
-    tow_l = box("gf_towl", 3, -3, 12, 6, 6, 24)             # x [0,6], y [-6,0]
-    tow_r = box("gf_towr", 21, -3, 12, 6, 6, 24)            # x [18,24]
-    cap_l = box("gf_capl", 3, -3, 24.4, 7, 7, 0.8)
-    cap_r = box("gf_capr", 21, -3, 24.4, 7, 7, 0.8)
-    # portcullis jamb ring proud of the slab face (slab front at y=-1)
-    outer = round_arch(12, -1.6, -0.55, 5.5, -0.2, 9.5, segs=8)
-    inner = round_arch(12, -2.0, -0.2, 4.5, -0.7, 8.6, segs=8)
-    bool_diff(outer, inner)
-    parts = [slab, tow_l, tow_r, cap_l, cap_r, outer]
+    # gatehouse face 24w x 28h x 6d, front at y=-1 (1 behind tower fronts),
+    # centered 10w x 14h round-arch portcullis opening
+    parts = wall_with_opening("gf", 24, 6, 28, -1.0, 12, 5.0, -0.1, 9.0, 14.0,
+                              'round', segs=8)
+    parts += [
+        box("gf_towl", 3, -3, 12, 6, 6, 24),                # x [0,6], y [-6,0]
+        box("gf_towr", 21, -3, 12, 6, 6, 24),               # x [18,24]
+        box("gf_capl", 3, -3, 24.4, 7, 7, 0.8),
+        box("gf_capr", 21, -3, 24.4, 7, 7, 0.8),
+        # portcullis jamb ring proud 0.45 of the slab face (slab front y=-1)
+        arch_band("gf_ring", -1.6, -0.55,
+                  round_outline(12, 5.5, 0.0, 9.5, 8),
+                  round_outline(12, 4.5, 0.0, 8.6, 8)),
+    ]
     # merlon teeth along the slab top edge
     for i in range(6):
         parts.append(box(f"gf_m{i}", 2.0 + 4 * i, -1.75, 29, 2, 1.5, 2))

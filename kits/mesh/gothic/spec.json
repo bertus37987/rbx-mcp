@@ -3,19 +3,20 @@
   "grid": 8,
   "pivot": "lower-left-front corner at origin",
   "generator": "gen_gothic.py",
-  "units": "1 unit = 1 stud (OBJ exported Y-up, -Z forward via Blender's OBJ exporter)",
+  "units": "1 unit = 1 stud (OBJ exported Y-up, -Z forward via Blender's wm.obj_export)",
+  "output_dir": "out/",
   "pieces": [
-    {"name": "wall_plain",    "file": "wall_plain.obj",    "size": [8, 16, 4.7]},
-    {"name": "wall_window",   "file": "wall_window.obj",   "size": [8, 16, 4]},
-    {"name": "wall_doorway",  "file": "wall_doorway.obj",  "size": [8, 16, 4]},
-    {"name": "merlon_run",    "file": "merlon_run.obj",    "size": [24, 4, 3]},
-    {"name": "buttress",      "file": "buttress.obj",      "size": [6, 24, 8]},
-    {"name": "corner_tower",  "file": "corner_tower.obj",  "size": [18, 34, 18]},
-    {"name": "stair_run",     "file": "stair_run.obj",     "size": [8, 16, 24]},
-    {"name": "arch_large",    "file": "arch_large.obj",    "size": [24, 29.5, 4]},
-    {"name": "gate_frame",    "file": "gate_frame.obj",    "size": [24, 30, 7]},
-    {"name": "spire_cap",     "file": "spire_cap.obj",     "size": [12, 36, 12]},
-    {"name": "pillar",        "file": "pillar.obj",        "size": [5, 20, 5]},
-    {"name": "roof_hip",      "file": "roof_hip.obj",      "size": [16, 8, 12]}
+    {"name": "wall_plain",    "file": "wall_plain.obj",    "size": [8.5, 16, 4.5], "desc": "8w x 16h x 4d wall, bevel, top trim band + base kick"},
+    {"name": "wall_window",   "file": "wall_window.obj",   "size": [8, 16, 4.2],   "desc": "8w x 16h x 4d wall, pointed-arch window + inset frame ring (0.2 proud of face)"},
+    {"name": "wall_doorway",  "file": "wall_doorway.obj",  "size": [8, 16, 4.2],   "desc": "8w x 16h x 4d wall, round-top doorway + U frame (0.2 proud of face)"},
+    {"name": "merlon_run",    "file": "merlon_run.obj",    "size": [24, 4, 3],     "desc": "24w parapet: base band + 8 crenel blocks (2x2x1.5, pitch 3)"},
+    {"name": "buttress",      "file": "buttress.obj",      "size": [6, 24, 8.7],   "desc": "foot column 6x16x8 + flying strut + pinnacle + pyramid cap"},
+    {"name": "corner_tower",  "file": "corner_tower.obj",  "size": [18.2, 34, 18.2], "desc": "16-dia x 32h cylinder + crown ring + 12 rim crenels"},
+    {"name": "stair_run",     "file": "stair_run.obj",     "size": [8, 16, 24],    "desc": "8 solid steps, 2 rise x 3 tread, lowest step at front"},
+    {"name": "arch_large",    "file": "arch_large.obj",    "size": [24.8, 29.3, 4.8], "desc": "two 4x20x4 columns, 16 gap, peaked apex (~40 deg wedges)"},
+    {"name": "gate_frame",    "file": "gate_frame.obj",    "size": [25, 30, 7.5],  "desc": "24w x 28h gatehouse face, 10w x 14h portcullis arch + jamb ring, 2 flanking 6x24x6 towers, merlons"},
+    {"name": "spire_cap",     "file": "spire_cap.obj",     "size": [12, 36, 12],   "desc": "4 stacked cylinders 12/10/8/4 dia x ~8h + pyramid tip"},
+    {"name": "pillar",        "file": "pillar.obj",        "size": [5, 20, 5],     "desc": "4-dia x 20h 8-gon shaft, 5x5 plinth + capital"},
+    {"name": "roof_hip",      "file": "roof_hip.obj",      "size": [16, 8, 12],    "desc": "16x12 hip roof, 8 high, ridge len 4"}
   ]
 }

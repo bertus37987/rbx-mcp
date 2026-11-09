@@ -2146,7 +2146,8 @@ Commands.editable_mesh = function(args)
 		end
 		if i % 100 == 0 then task.wait() end
 	end
-	local mp = AssetService:CreateMeshPartAsync(em)
+	local okMP, mp = pcall(function() return AssetService:CreateMeshPartAsync(Content.fromObject(em)) end)
+	if not okMP then mp = AssetService:CreateMeshPartAsync(em) end
 	mp.Name = name
 	mp.Anchored = true
 	local parent, perr = resolvePath(args.parent_path or "Workspace")

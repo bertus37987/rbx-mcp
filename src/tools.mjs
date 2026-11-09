@@ -13,6 +13,20 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join, dirname, basename } from "node:path";
 import { parseObjFile, chunkMesh } from "./mesh.mjs";
 
+// JSON value → Luau table literal (JSON.stringify is NOT valid Luau for
+// objects: `:` vs `=`, `null` vs `nil`). Used for KIT_CONFIG / BUILD_CONFIG.
+function toLuau(v) {
+  if (v === null || v === undefined) return "nil";
+  if (typeof v === "number" || typeof v === "boolean") return JSON.stringify(v);
+  if (typeof v === "string") return JSON.stringify(v);
+  if (Array.isArray(v)) return "{" + v.map(toLuau).join(",") + "}";
+  if (typeof v === "object")
+    return "{" + Object.entries(v)
+      .map(([k, x]) => (/^[A-Za-z_][A-Za-z0-9_]*$/.test(k) ? `${k}=${toLuau(x)}` : `[${JSON.stringify(k)}]=${toLuau(x)}`))
+      .join(",") + "}";
+  return "nil";
+}
+
 function pluginTool(name, description, inputSchema, extraProps = {}) {
   return {
     name,
@@ -251,7 +265,7 @@ export function buildTools({ broker, router, local }) {
       annotations: { title: "apply kit", destructiveHint: true },
       handler: async (a) => {
         const src = local.kitSource(a.kit);
-        const code = `local KIT_CONFIG = ${JSON.stringify(a.config || {})}\nlocal PARENT_PATH = ${JSON.stringify(a.parent_path || "")}\n` + src;
+        const code = `local KIT_CONFIG = ${toLuau(a.config || {})}\nlocal PARENT_PATH = ${JSON.stringify(a.parent_path || "")}\n` + src;
         return broker.enqueue(a.studio_id, "run_luau", { code }, 120000);
       },
     },
@@ -448,7 +462,7 @@ export function buildTools({ broker, router, local }) {
         try { src = local.builderSource(a.recipe); }
         catch (e) { return { ok: false, error: e.message, recipes: local.listBuilders() }; }
         const cfg = a.config || {};
-        const code = `local BUILD_CONFIG = ${JSON.stringify(cfg)}\nlocal PARENT_PATH = ${JSON.stringify(cfg.parent_path || "Workspace")}\n` + src;
+        const code = `local BUILD_CONFIG = ${toLuau(cfg)}\nlocal PARENT_PATH = ${JSON.stringify(cfg.parent_path || "Workspace")}\n` + src;
         return broker.enqueue(a.studio_id, "run_luau", { code }, 120000);
       },
     },
