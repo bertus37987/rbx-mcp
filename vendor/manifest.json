@@ -1,0 +1,80 @@
+{
+  "comment": "Vetted OSS Luau modules installable via rbx_install_module. Sources are pinned raw URLs; check each repo's license (MIT unless noted). Fetched once into vendor/cache/.",
+  "modules": {
+    "topbarplus": {
+      "repo": "1ForeverHD/TopbarPlus",
+      "license": "MIT",
+      "note": "Topbar icons/buttons. Multi-file project — install pulls init.lua; follow-up: vendor the full release rbxm. [multi-file: full tree installed]",
+      "ref": "main",
+      "dir": "src"
+    },
+    "zoneplus": {
+      "repo": "1ForeverHD/ZonePlus",
+      "license": "MIT",
+      "note": "Region/zone detection (entered/exited events) for combat arenas, safe zones, checkpoints. [multi-file: full tree installed]",
+      "ref": "main",
+      "dir": "src/Zone"
+    },
+    "profileservice": {
+      "url": "https://raw.githubusercontent.com/MadStudioRoblox/ProfileService/master/ProfileService.lua",
+      "repo": "MadStudioRoblox/ProfileService",
+      "license": "MIT",
+      "note": "Session-locked DataStore profiles — the standard save-system core."
+    },
+    "trove": {
+      "repo": "Sleitnick/RbxUtil",
+      "license": "MIT",
+      "note": "Cleanup tracker (connections/instances) — prevents leaks. [multi-file: full tree installed]",
+      "ref": "main",
+      "dir": "modules/trove"
+    },
+    "signal": {
+      "repo": "Sleitnick/RbxUtil",
+      "license": "MIT",
+      "note": "Fast signal/event class. [multi-file: full tree installed]",
+      "ref": "main",
+      "dir": "modules/signal"
+    },
+    "promise": {
+      "url": "https://raw.githubusercontent.com/evaera/roblox-lua-promise/master/lib/init.lua",
+      "repo": "evaera/roblox-lua-promise",
+      "license": "MIT",
+      "note": "Promises for async flows."
+    },
+    "tableutil": {
+      "repo": "Sleitnick/RbxUtil",
+      "license": "MIT",
+      "ref": "main",
+      "dir": "modules/table-util",
+      "note": "[multi-file: full tree installed]"
+    },
+    "testez": {
+      "repo": "Roblox/TestEZ",
+      "license": "Apache-2.0",
+      "note": "BDD unit-test runner; multi-file — vendored init only, extend manifest for full tree. [multi-file: full tree installed]",
+      "ref": "master",
+      "dir": "src"
+    },
+    "fusion": {
+      "repo": "dphfox/Fusion",
+      "license": "MIT",
+      "note": "Declarative reactive UI/state — code-first GUI alternative to imperative GuiObjects. [multi-file: full tree installed]",
+      "ref": "main",
+      "dir": "src"
+    },
+    "cmdr": {
+      "repo": "evaera/Cmdr",
+      "license": "MIT",
+      "note": "Admin/debug command console — embed for live ops. [multi-file: full tree installed]",
+      "ref": "master",
+      "dir": "Cmdr"
+    },
+    "knit": {
+      "repo": "Sleitnick/Knit",
+      "license": "MIT",
+      "note": "Service/controller framework scaffold (server half; pair KnitClient). [multi-file: full tree installed]",
+      "ref": "main",
+      "dir": "src"
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "rbx-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Roblox Studio MCP: verification, native GUI builder, computable assets (NPC armor), terrain, game kits — plus upstream routing to the official Studio MCP and Blender bridges. Zero-dep.",
+  "type": "module",
+  "bin": {
+    "rbx-mcp": "bin/rbx-mcp.mjs"
+  },
+  "scripts": {
+    "test": "node test/selftest.mjs",
+    "serve": "node bin/rbx-mcp.mjs serve",
+    "broker": "node bin/rbx-mcp.mjs broker",
+    "install": "node bin/rbx-mcp.mjs install",
+    "doctor": "node bin/rbx-mcp.mjs doctor"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "rbx-mcp": {
+      "command": "node",
+      "args": [
+        "C:\\Users\\willy\\Downloads\\Entkompilieren\\agent-harness\\packages\\rbx-mcp\\bin\\rbx-mcp.mjs",
+        "serve"
+      ]
+    }
+  }
+}

@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>rbx-mcp</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #111111; --muted: #6b7280; --line: #e5e7eb;
+    --card: #fafafa; --accent: #111111; --ok: #16a34a; --bad: #dc2626; --warn: #d97706;
+    --radius: 16px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 14px; line-height: 1.5;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 28px 20px 80px; }
+  header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 24px; }
+  h1 { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; margin: 0; }
+  .sub { color: var(--muted); font-size: 13px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+  .dot.on { background: var(--ok); } .dot.off { background: var(--bad); }
+  .grid { display: grid; gap: 14px; }
+  .card {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 18px 20px;
+  }
+  .card h2 { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 0 0 12px; }
+  .row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-top: 1px solid var(--line); }
+  .row:first-child { border-top: 0; }
+  code, pre {
+    font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    font-size: 12px; background: var(--bg); border: 1px solid var(--line);
+    border-radius: 10px; padding: 10px 12px; white-space: pre-wrap; word-break: break-word;
+  }
+  button {
+    font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+    background: var(--fg); color: var(--bg); border: 0; border-radius: 999px;
+    padding: 8px 16px;
+  }
+  button.ghost { background: var(--bg); color: var(--fg); border: 1px solid var(--line); }
+  .pill { font-size: 11px; border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; color: var(--muted); }
+  .tool { padding: 6px 0; }
+  .tool b { font-family: ui-monospace, monospace; font-size: 12px; }
+  .tool span { color: var(--muted); font-size: 12px; margin-left: 8px; }
+  .log { font-family: ui-monospace, monospace; font-size: 11px; max-height: 220px; overflow: auto; color: var(--muted); }
+  .log .err { color: var(--bad); }
+  .clients { display: grid; gap: 8px; }
+  .clients .row { border: 0; }
+  details summary { cursor: pointer; font-weight: 600; }
+  .ok { color: var(--ok); } .bad { color: var(--bad); } .warn { color: var(--warn); }
+  footer { margin-top: 28px; color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>rbx-mcp</h1>
+    <span id="conn" class="sub"><span class="dot off"></span>checking…</span>
+  </header>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Studio connection</h2>
+      <div id="instances"><div class="row"><span class="sub">No Studio instance connected. Open Roblox Studio → click the <b>RbxMcp</b> toolbar button. Make sure Game Settings → Security → “Allow HTTP Requests” is on.</span></div></div>
+    </div>
+
+    <div class="card">
+      <h2>Install for your agent</h2>
+      <div class="clients">
+        <div class="row"><span>Plugin into Roblox Studio</span><button id="installPlugin">Install plugin</button></div>
+        <div class="row"><span>Register with agents (Claude Code, Cursor, Windsurf, Codex, gateway)</span><button id="installAll">Register everywhere</button></div>
+      </div>
+      <pre id="cfg">{
+  "mcpServers": {
+    "rbx-mcp": {
+      "command": "node",
+      "args": ["…/packages/rbx-mcp/bin/rbx-mcp.mjs", "serve"]
+    }
+  }
+}</pre>
+      <div id="installOut" class="sub"></div>
+    </div>
+
+    <div class="card">
+      <h2>Upstreams (routing)</h2>
+      <div id="upstreams"><div class="row"><span class="sub">No upstreams configured — add them in rbx-mcp.config.json. e.g. "studio": {"kind":"http","url":"http://127.0.0.1:PORT/mcp"} for the official Studio MCP.</span></div></div>
+    </div>
+
+    <div class="card">
+      <h2>Recent calls</h2>
+      <div id="log" class="log">—</div>
+    </div>
+
+    <div class="card">
+      <h2>Test command</h2>
+      <div class="row">
+        <span class="sub">Ping the plugin</span>
+        <button class="ghost" id="ping">rbx_ping</button>
+      </div>
+      <pre id="pingOut" style="display:none"></pre>
+    </div>
+  </div>
+
+  <footer>rbx-mcp · local broker · 127.0.0.1:58420 · MIT</footer>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+async function j(url, opts) { const r = await fetch(url, opts); return r.json().catch(() => ({})); }
+async function refresh() {
+  const s = await j("/api/state");
+  const inst = s.instances || [];
+  $("conn").innerHTML = inst.length
+    ? `<span class="dot on"></span>${inst.length} studio connected`
+    : `<span class="dot off"></span>waiting for studio`;
+  $("instances").innerHTML = inst.length
+    ? inst.map(i => `<div class="row"><span><b>${i.place || "?"}</b> <span class="pill">${(i.studioId||"").slice(0,8)}</span> <span class="pill">v${i.version||"?"}</span></span><span class="sub">${(i.caps||[]).join(" · ")}</span></div>`).join("")
+    : `<div class="row"><span class="sub">No Studio instance connected. Open Roblox Studio → click the <b>RbxMcp</b> toolbar button. Game Settings → Security → “Allow HTTP Requests” must be on.</span></div>`;
+  $("log").innerHTML = (s.recent || []).slice().reverse().map(e =>
+    `<div class="${e.ok === false ? "err" : ""}">${(e.t||"").slice(11,19)} ${e.dir || "?"} ${e.studioId ? e.studioId.slice(0,8) : ""} ${e.cmd || ""}</div>`
+  ).join("") || "—";
+  if (inst[0]) $("ping").dataset.sid = inst[0].studioId;
+}
+$("ping").onclick = async () => {
+  const sid = $("ping").dataset.sid;
+  if (!sid) { alert("no studio connected"); return; }
+  const r = await j("/api/command", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ studioId: sid, cmd: "ping", args: {} }) });
+  $("pingOut").style.display = "block";
+  $("pingOut").textContent = JSON.stringify(r, null, 2);
+};
+$("installPlugin").onclick = async () => { $("installOut").textContent = JSON.stringify(await j("/api/install-plugin", { method: "POST" }), null, 2); };
+$("installAll").onclick = async () => { $("installOut").textContent = JSON.stringify(await j("/api/install", { method: "POST" }), null, 2); };
+refresh(); setInterval(refresh, 2000);
+</script>
+</body>
+</html>

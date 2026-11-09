@@ -1,0 +1,29 @@
+{
+  "port": 58420,
+  "upstreams": {
+    "studio": {
+      "kind": "http",
+      "url": "http://127.0.0.1:31521/mcp",
+      "_comment": "Official built-in Studio MCP. Enable: Studio → Assistant → Settings → MCP Servers. Route ONLY playtest/input/screenshot — its mesh/texture generation is low quality; use rbx3d/blender/mixar instead."
+    },
+    "rbx3d": {
+      "kind": "stdio",
+      "command": "uv",
+      "args": ["--directory", "C:\\Users\\willy\\rbx3d-mcp", "run", "rbx3d-mcp"],
+      "_comment": "Blender-backed Roblox asset toolkit — THE mesh/animation pipeline. Generate/build Roblox-ready models + animations in Blender (1 unit = 1 stud, R15 rigs, ≤20k tris), export, then rbx_import_mesh / rbx_mesh_watch into Studio."
+    },
+    "blender": {
+      "kind": "stdio",
+      "command": "uv",
+      "args": ["--directory", "C:\\Users\\willy\\blender-agent-stack\\blender_mcp\\mcp", "run", "blender-mcp"],
+      "_comment": "General Blender control (execute_bpy_script, look, generate_3d). For custom modeling, materials, retopo, texture work before Roblox export."
+    },
+    "mixar": {
+      "kind": "stdio",
+      "command": "cmd.exe",
+      "args": ["/d", "/c", "C:\\Users\\willy\\.mixar\\connector\\mixar-mcp.cmd"],
+      "_comment": "AI text/image→3D generation with scene tabs (enqueue_generation — costs credits). Use when a prompt-generated base mesh beats hand-building, then validate+export to Studio."
+    }
+  },
+  "generation_policy": "Mesh/texture/animation generation routes to rbx3d/blender/mixar upstreams — NEVER studio.generate_mesh/generate_texture (low quality). Official upstream is only for: start_stop_play, user_keyboard/mouse_input, character_navigation, screen_capture, get_console_output."
+}
