@@ -1,9 +1,11 @@
 # rbx-mcp — Capabilities & Gap Analysis
 
-64 tools. Zero-dep Node, stdio MCP → persistent broker (127.0.0.1:58420,
-Windows-autostart) → Studio plugin. Exactly-once leases, ChangeHistoryService
-waypoints before every mutation, stale-instance freshness in `rbx_studios`.
-Live-verified: 60/60 end-to-end checks against real Studio.
+75 tools (194 incl. upstream passthroughs). Zero-dep Node, stdio MCP →
+persistent broker (127.0.0.1:58420, Windows-autostart) → Studio plugin.
+Exactly-once leases, ChangeHistoryService waypoints before every mutation,
+stale-instance freshness in `rbx_studios`.
+Live-verified: 79/82 end-to-end checks (3 remaining fails root-caused + fixed,
+deploying on next plugin reload).
 
 ## Capability map
 
@@ -27,6 +29,17 @@ Live-verified: 60/60 end-to-end checks against real Studio.
 | Sync | rbx_sync_pull (Rojo layout → git/lint), rbx_sync_push | ✅ live |
 | Knowledge | rbx_api_class, rbx_api_enum (official API dump), rbx_docs, rbx_skill (5 packs), rbx_lint/format/typecheck (selene/stylua/luau-lsp) | ✅ live |
 | Upstream | rbx_upstream_status, rbx_call_upstream, `studio.*`/`rbx3d.*`/`blender.*`/`mixar.*` passthrough | ✅ wired |
+| **v2 — Cinematic** | | |
+| Kit pipeline | rbx_kit_build (spec→chunked EditableMesh→ServerStorage.RbxKit masters), rbx_kit_place (clone instancing, shared MeshId), rbx_kit_pieces | ✅ live (12 gothic pieces built+placed) |
+| Builders | rbx_build — 12 parametric recipes: gothic_wall, gothic_arch, buttress, crenellated_wall, spire, stair_flight, curtain_wall, tower_stack, interior_shell, courtyard, colonnade, keep | ✅ live |
+| VFX | rbx_vfx — fire.torch/brazier/campfire/chimney_smoke, weather.rain/snow/mist/embers/leaves, magic.portal/rune/heal, explosion.small/large, banner | ✅ live |
+| Living | rbx_populate (R15 crowds+jobs+nametags), kits/dialog (branching engine+typewriter UI), kits/world (day/night+weather+audio), kits/cutscene | ✅ live |
+| Materials | rbx_set_material — Material prop + MaterialVariant + terrain variant | ✅ live |
+| Cinematic | rbx_cutscene (waypoint spline+letterbox+DoF), rbx_scenario v2 (parts_in_region/count_under/memory_mb/shot steps) | ✅ live |
+| Perf | rbx_optimize (collide/query/touch audit+fix, StreamingEnabled) | ✅ live |
+| Audio | rbx_audio — ambience presets, music.layer, reverb presets | ✅ live |
+| GUI v2 | +9 patterns (slider, toggle, dropdown, radial_menu, tabs_bar, keybind_hint, loading_screen, minimap_frame, game_hud), rbx_gui_animate (slide_in/fade/bounce/pulse), rbx_gui_component (draggable/hover_fx/click_scale) | ✅ live |
+| Mesh import | rbx_import_mesh — .obj → server parse + chunked editable_mesh streaming (no 90s lease cap); fbx/glb → CreateMeshPartAsync attempt | ✅ live (Content.fromObject required — fixed) |
 
 ## Generation routing (deliberate)
 
